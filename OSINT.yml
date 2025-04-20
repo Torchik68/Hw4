@@ -1,0 +1,110 @@
+---
+- name: OSINT
+  hosts: all
+  become: true
+  vars:
+    git_tools_path: /opt/osint-tools
+
+  tasks:
+
+    - name: Install dependencies via apt
+      ansible.builtin.apt:
+        name:
+          - git
+          - python3-pip
+          - golang-go
+          - unzip
+          - curl
+        state: present
+        update_cache: true
+      tags: base
+
+    - name: Create directory for Amass
+      ansible.builtin.file:
+        path: /opt/amass
+        state: directory
+        mode: '0755'
+      tags: amass
+
+    - name: Download Amass release archive
+      ansible.builtin.get_url:
+        url: https://github.com/owasp-amass/amass/releases/download/v3.21.2/amass_linux_amd64.zip
+        dest: /tmp/amass.zip
+        owner: root
+        group: root
+        mode: '0644'
+      tags: amass
+
+    - name: Unzip Amass archive
+      ansible.builtin.unarchive:
+        src: /tmp/amass.zip
+        dest: /opt/amass
+        remote_src: true
+      tags: amass
+
+    - name: Move Amass binary to /usr/local/bin
+      ansible.builtin.command:
+        cmd: mv /opt/amass/amass_linux_amd64/amass /usr/local/bin/amass
+      args:
+        creates: /usr/local/bin/amass
+      tags: amass
+
+    - name: Set executable permission on Amass
+      ansible.builtin.file:
+        path: /usr/local/bin/amass
+        mode: '0755'
+        owner: root
+        group: root
+      tags: amass
+
+    - name: Install theHarvester via pip
+      ansible.builtin.pip:
+        name: theHarvester
+        extra_args: --break-system-packages
+      tags: theharvester
+
+    - name: Install the Shodan CLI via pip
+      ansible.builtin.pip:
+        name: shodan
+        extra_args: --break-system-packages
+      tags: shodan
+
+    - name: Create a directory for Git tools
+      ansible.builtin.file:
+        path: "{{ git_tools_path }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+      tags: base
+
+    - name: Clone Subfinder from GitHub
+      ansible.builtin.git:
+        repo: https://github.com/projectdiscovery/subfinder.git
+        dest: "{{ git_tools_path }}/subfinder"
+        version: main
+      tags: subfinder
+
+    - name: Install Subfinder via Go
+      ansible.builtin.shell: |
+        cd {{ git_tools_path }}/subfinder/v2/cmd/subfinder
+        go install
+      environment:
+        GOPATH: "{{ ansible_env.HOME }}/go"
+        PATH: "{{ ansible_env.PATH }}:{{ ansible_env.HOME }}/go/bin"
+      args:
+        creates: "{{ ansible_env.HOME }}/go/bin/subfinder"
+      tags: subfinder
+
+    - name: Clone GitDorker from GitHub
+      ansible.builtin.git:
+        repo: https://github.com/obheda12/GitDorker.git
+        dest: "{{ git_tools_path }}/gitdorker"
+        version: master
+      tags: gitdorker
+
+    - name: Install the dependencies for GitDorker
+      ansible.builtin.pip:
+        requirements: "{{ git_tools_path }}/gitdorker/requirements.txt"
+        executable: pip3
+        extra_args: --break-system-packages
+      tags: gitdorker
